@@ -102,7 +102,7 @@ This opts that directory in (`.conversation-memory/` gets created, the AGENTS.md
 | `/list-conversation-memory` | Lists every registered workspace on this machine |
 | `/deregister-conversation-memory` | Removes a workspace from the registry (doesn't delete its files) |
 
-**A real asymmetry worth knowing about**: Claude Code keeps every past session as its own file, so `/initialize-conversation-memory` there recovers full history. agy only persists a workspace → *most-recently-used-session* mapping on disk — there's no on-disk index of every past agy session for a directory — so agy backfill can only ever recover the current/most-recent session, not full history. Automatic *going-forward* capture is unaffected by this and, for agy specifically, is actually more granular than Claude Code's: agy has no session-end-equivalent hook, so capture is wired to its `Stop` event instead, which fires after every turn rather than only at session close.
+**A real asymmetry worth knowing about**: Claude Code keeps every past session as its own file, so `/initialize-conversation-memory` there recovers full history. agy only persists a workspace → *most-recently-used-session* mapping on disk — there's no on-disk index of every past agy session for a directory — so agy backfill can only ever recover the current/most-recent session, not full history. Automatic *going-forward* capture doesn't have this asymmetry: both assistants capture live, per turn, as soon as the assistant finishes responding — Claude Code via its `Stop` hook (in addition to `SessionEnd`, which still catches anything at true session close), agy via its `Stop` hook (its only lifecycle hook, since it has no session-end-equivalent event).
 
 ### Manual / library installation
 

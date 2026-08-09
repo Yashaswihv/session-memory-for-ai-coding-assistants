@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """
-Claude Code SessionEnd hook wrapper. Registered globally in
-~/.claude/settings.json by `session-memory setup install` -- no-op in
-any directory that hasn't opted in via `session-memory init`.
+Claude Code SessionEnd + Stop hook wrapper. Registered globally in
+~/.claude/settings.json by `session-memory setup install` for both
+events -- no-op in any directory that hasn't opted in via
+`session-memory init`. Wiring the same script to both events gives live
+per-turn capture (Stop fires each time the main agent finishes
+responding) while also catching up at true session close; running it
+twice for the same turn is harmless since capture is re-entrant and only
+appends what's new.
 
 Claude Code sends the hook payload as snake_case JSON on stdin, with
-`cwd`, `session_id`, and `transcript_path` fields.
+`cwd`, `session_id`, and `transcript_path` fields, for both events.
 """
 import json
 import os

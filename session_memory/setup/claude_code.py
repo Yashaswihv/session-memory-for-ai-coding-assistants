@@ -1,9 +1,9 @@
 """
 Global wiring/unwiring of session-memory into Claude Code: slash commands,
-SessionStart/SessionEnd hooks (~/.claude/settings.json), and MCP server
-registration (`claude mcp add --scope user`). Every function here is
-paired with an exact inverse so uninstall removes precisely what install
-added, without touching anything else the user has configured.
+SessionStart/SessionEnd/Stop hooks (~/.claude/settings.json), and MCP
+server registration (`claude mcp add --scope user`). Every function here
+is paired with an exact inverse so uninstall removes precisely what
+install added, without touching anything else the user has configured.
 """
 import os
 import shutil
@@ -63,10 +63,18 @@ def _remove_hook(hooks: dict, event_name: str, command: str) -> None:
 
 
 def wire_hooks() -> None:
+    # Stop reuses the same session-end command/wrapper as SessionEnd:
+    # Claude Code's Stop payload carries the same cwd/session_id/
+    # transcript_path fields, and re-running session-end against the same
+    # session is the re-entrant, only-appends-what's-new operation this
+    # was already designed for. Stop fires after every turn (main agent
+    # finished responding), giving live per-turn capture instead of only
+    # catching up at true session close.
     data = load_json(paths.CLAUDE_SETTINGS_PATH)
     hooks = data.setdefault("hooks", {})
     _upsert_hook(hooks, "SessionStart", _session_start_cmd())
     _upsert_hook(hooks, "SessionEnd", _session_end_cmd())
+    _upsert_hook(hooks, "Stop", _session_end_cmd())
     save_json(paths.CLAUDE_SETTINGS_PATH, data)
 
 
@@ -77,6 +85,7 @@ def unwire_hooks() -> None:
     hooks = data.get("hooks", {})
     _remove_hook(hooks, "SessionStart", _session_start_cmd())
     _remove_hook(hooks, "SessionEnd", _session_end_cmd())
+    _remove_hook(hooks, "Stop", _session_end_cmd())
     save_json(paths.CLAUDE_SETTINGS_PATH, data)
 
 

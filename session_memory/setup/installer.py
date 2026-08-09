@@ -51,7 +51,7 @@ def install(bin_path: str) -> None:
 
     print("Claude Code:")
     _step("copy slash commands to ~/.claude/commands/", claude_code.install_commands)
-    _step("wire SessionStart/SessionEnd hooks into ~/.claude/settings.json", claude_code.wire_hooks)
+    _step("wire SessionStart/SessionEnd/Stop hooks into ~/.claude/settings.json", claude_code.wire_hooks)
     _step("register MCP server (claude mcp add --scope user)", lambda: claude_code.register_mcp(paths.BIN_LINK))
 
     print("agy:")
