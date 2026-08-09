@@ -1,0 +1,1 @@
+recursive-include session_memory/assistants *.md *.py

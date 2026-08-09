@@ -1,6 +1,7 @@
 import click
 
 from session_memory import __version__
+from session_memory.cli.cmd_backfill import cmd_backfill
 from session_memory.cli.cmd_cleanup import cmd_cleanup
 from session_memory.cli.cmd_deregister import cmd_deregister
 from session_memory.cli.cmd_distill import cmd_distill
@@ -8,6 +9,7 @@ from session_memory.cli.cmd_init import cmd_init
 from session_memory.cli.cmd_list import cmd_list
 from session_memory.cli.cmd_prime import cmd_prime
 from session_memory.cli.cmd_sanitize import cmd_sanitize
+from session_memory.cli.cmd_setup import cmd_setup
 from session_memory.hooks.session_end import run_session_end
 from session_memory.hooks.session_start import run_session_start
 
@@ -19,12 +21,14 @@ def cli():
 
 
 cli.add_command(cmd_init)
+cli.add_command(cmd_backfill)
 cli.add_command(cmd_sanitize)
 cli.add_command(cmd_distill)
 cli.add_command(cmd_cleanup)
 cli.add_command(cmd_prime)
 cli.add_command(cmd_list)
 cli.add_command(cmd_deregister)
+cli.add_command(cmd_setup)
 
 
 @cli.group(name="hook")

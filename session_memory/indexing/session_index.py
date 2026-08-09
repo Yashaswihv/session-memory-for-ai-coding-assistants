@@ -19,6 +19,12 @@ class SessionIndex:
     to FAISS, and the BM25 index is rebuilt from the full accumulated chunk
     set (BM25 is corpus-level; a partial append would leave its IDF weights
     stale).
+
+    Tracks its own "how many turns already indexed" progress from the
+    persisted chunk list rather than trusting a pre-sliced turn list from
+    the caller, so it stays independently resumable even if a prior run
+    was interrupted after LogWriter advanced its own cursor but before
+    indexing finished.
     """
 
     def __init__(self, memory_dir: str, commit_hash: str, session_id: str):
@@ -40,9 +46,30 @@ class SessionIndex:
         except (pickle.PickleError, OSError, EOFError):
             return []
 
-    def add_turns(self, new_turns: List[Turn]) -> List[Chunk]:
-        """Chunks, embeds, and indexes `new_turns` (already-new turns from
-        LogWriter — this does not itself deduplicate against prior calls)."""
+    def _turns_already_indexed(self) -> int:
+        """How many leading turns (by turn_index) are already reflected in
+        the persisted chunks. Deliberately independent of LogWriter's own
+        SessionState: if the hook process is killed between LogWriter
+        advancing its cursor and this class finishing its write (observed
+        in practice -- claude -p's SessionEnd hook can time out mid-index),
+        LogWriter's bookkeeping would otherwise say "nothing new" forever
+        and the index would never catch up. Tracking progress from what's
+        actually on disk here means a retry can always detect and repair
+        the gap regardless of what LogWriter thinks happened."""
+        if not self.chunks:
+            return 0
+        return max(c.turn_index for c in self.chunks) + 1
+
+    def add_turns(self, all_turns: List[Turn]) -> List[Chunk]:
+        """
+        Chunks, embeds, and indexes whatever turns in `all_turns` aren't
+        already reflected in the persisted chunk list. Callers should pass
+        the FULL ordered turn list for this session each time (not a
+        pre-sliced "new turns" subset) so this can independently determine
+        what's missing.
+        """
+        already_indexed = self._turns_already_indexed()
+        new_turns = all_turns[already_indexed:]
         new_chunks = chunk_turns(new_turns)
         if not new_chunks:
             return []

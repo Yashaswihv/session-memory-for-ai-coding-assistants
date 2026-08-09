@@ -7,7 +7,13 @@ from session_memory.capture.transcript_reader import TranscriptReader, Turn, par
 
 def _text_from_blocks(blocks) -> str:
     """Concatenates the text of `text`-type content blocks; ignores
-    tool_use/tool_result/thinking/image blocks."""
+    tool_use/tool_result/thinking/image blocks. `content` is a plain
+    string rather than a block list for plain-text messages with no
+    attachments/tool activity -- only messages with images, tool use, etc.
+    get the list-of-blocks form -- so a bare string is treated as one text
+    block."""
+    if isinstance(blocks, str):
+        return blocks.strip()
     if not isinstance(blocks, list):
         return ""
     parts = [b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text"]
@@ -15,6 +21,8 @@ def _text_from_blocks(blocks) -> str:
 
 
 def _block_types(blocks) -> set:
+    if isinstance(blocks, str):
+        return {"text"} if blocks.strip() else set()
     if not isinstance(blocks, list):
         return set()
     return {b.get("type") for b in blocks if isinstance(b, dict)}
@@ -29,9 +37,10 @@ class ClaudeCodeReader(TranscriptReader):
     ("user", "assistant") AND a `message` key are conversational turns;
     other line types (mode, permission-mode, system, file-history-snapshot,
     attachment, last-prompt, summary, ...) are session bookkeeping and are
-    skipped. The real payload is nested: `message.role` / `message.content`,
-    where `content` is a list of blocks (text, tool_use, tool_result,
-    thinking, image) rather than a flat string.
+    skipped. The real payload is nested: `message.role` / `message.content`.
+    `content` is usually a list of blocks (text, tool_use, tool_result,
+    thinking, image), but a plain user message with no attachments or tool
+    activity can have `content` as a bare string instead.
 
     A "user" event whose content includes a `tool_result` block is a tool
     result being fed back to the model, not developer input, and is treated

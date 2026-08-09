@@ -27,12 +27,11 @@ def _get_git_remote(path: str) -> Optional[str]:
     return None
 
 
-@click.command(name="init")
-@click.option("--path", default=".", show_default=True, help="Workspace directory to initialize.")
-@click.option("--name", default=None, help="Friendly name for this workspace (defaults to the directory name).")
-@click.option("--tags", default="", help="Comma-separated tags for this workspace, set once at init time.")
-def cmd_init(path: str, name: Optional[str], tags: str):
-    """Initializes conversation memory for a workspace (works with or without git)."""
+def init_workspace(path: str, name: Optional[str] = None, tags: str = "") -> WorkspaceEntry:
+    """Idempotent workspace-init logic, factored out of the `init` command
+    so other entry points (e.g. `backfill`) can ensure a workspace is set
+    up without shelling back out to the CLI. Safe to call repeatedly --
+    upserts into the registry rather than erroring if already initialized."""
     root = os.path.realpath(path)
     memory_dir = os.path.join(root, MEMORY_DIR_NAME)
     os.makedirs(memory_dir, exist_ok=True)
@@ -54,5 +53,15 @@ def cmd_init(path: str, name: Optional[str], tags: str):
 
     ensure_project_instructions(root)
 
-    click.echo(f"Initialized conversation memory for '{workspace_name}' at {memory_dir}")
-    click.echo(f"Registered in ~/.config/session-memory/registry.json (id={entry.id}, tags={tag_list})")
+    return entry
+
+
+@click.command(name="init")
+@click.option("--path", default=".", show_default=True, help="Workspace directory to initialize.")
+@click.option("--name", default=None, help="Friendly name for this workspace (defaults to the directory name).")
+@click.option("--tags", default="", help="Comma-separated tags for this workspace, set once at init time.")
+def cmd_init(path: str, name: Optional[str], tags: str):
+    """Initializes conversation memory for a workspace (works with or without git)."""
+    entry = init_workspace(path, name, tags)
+    click.echo(f"Initialized conversation memory for '{entry.name}' at {entry.memory_dir}")
+    click.echo(f"Registered in ~/.config/session-memory/registry.json (id={entry.id}, tags={entry.tags})")

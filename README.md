@@ -73,8 +73,40 @@ SESSION-START HOOK                    SESSION-END HOOK
 | `hooks/` | `session_start` / `session_end` lifecycle hook logic |
 | `mcp_server/` | Stdio MCP server exposing `search_conversation_log` and `search_all_workspaces` |
 | `cli/` | The `session-memory` command-line tool |
+| `setup/` | Global install/uninstall plumbing (`session-memory setup install/uninstall`) — wires slash commands/skills, hooks, and MCP registration into Claude Code and agy's own config |
+| `assistants/` | Per-assistant asset source: Claude Code `commands/*.md` + hook wrapper scripts, agy `skills/<name>/SKILL.md` + hook wrapper script — copied into place by `setup install` |
 
-## Installation
+## Global installation (recommended)
+
+`setup.sh` builds a dedicated venv (independent of wherever you clone this repo), symlinks a `session-memory` binary onto your `PATH`, and wires the framework into **both** Claude Code and agy globally: slash commands/skills, lifecycle hooks (so capture is automatic once a workspace opts in), and MCP server registration. Run it once, from anywhere:
+
+```bash
+./setup.sh
+```
+
+Then, in any project directory, in either assistant:
+
+```
+/initialize-conversation-memory
+```
+
+This opts that directory in (`.conversation-memory/` gets created, the AGENTS.md/CLAUDE.md retrieval pointer gets injected, the workspace is registered) and backfills every transcript already on disk for it into `conversation_log_<commit>_<session>.{md,faiss,bm25.pkl,chunks.pkl}` files. After that, capture happens automatically on future sessions via each assistant's lifecycle hooks — no need to run it again except to catch up on history.
+
+| Command / skill | Does |
+|---|---|
+| `/initialize-conversation-memory` | Opts a workspace in and backfills every transcript on disk for it |
+| `/prime-conversation-memory` | Seeds a git worktree from its parent repo's accumulated memory |
+| `/distill-conversation-memory` | Summarizes accumulated history into AGENTS.md's persistent section |
+| `/sanitize-conversation-memory` | Produces redacted, shareable `*.sanitized.*` files |
+| `/cleanup-conversation-memory` | Removes specific low-quality/sensitive turns |
+| `/list-conversation-memory` | Lists every registered workspace on this machine |
+| `/deregister-conversation-memory` | Removes a workspace from the registry (doesn't delete its files) |
+
+**A real asymmetry worth knowing about**: Claude Code keeps every past session as its own file, so `/initialize-conversation-memory` there recovers full history. agy only persists a workspace → *most-recently-used-session* mapping on disk — there's no on-disk index of every past agy session for a directory — so agy backfill can only ever recover the current/most-recent session, not full history. Automatic *going-forward* capture is unaffected by this and, for agy specifically, is actually more granular than Claude Code's: agy has no session-end-equivalent hook, so capture is wired to its `Stop` event instead, which fires after every turn rather than only at session close.
+
+### Manual / library installation
+
+If you'd rather not run the global installer (e.g. you're only using the CLI directly, or contributing to the framework itself):
 
 ```bash
 python3 -m venv .venv
@@ -88,7 +120,10 @@ pip install -e .
 # Initialize conversation memory for a workspace (works with or without git)
 session-memory init --path . --tags backend,python
 
-# Wire into an assistant's lifecycle hooks
+# Backfill every transcript already on disk for this workspace
+session-memory backfill --path .
+
+# Wire into an assistant's lifecycle hooks directly (setup.sh does this globally for you)
 session-memory hook session-start --cwd .
 session-memory hook session-end --cwd . --session-id <id> --transcript-path <path> --assistant agy
 
@@ -111,6 +146,15 @@ session-memory deregister <workspace-id>
 # Remove specific low-quality/sensitive turns from a session
 session-memory cleanup --path . --session-id <id> --turn <index>
 ```
+
+## Uninstalling
+
+```bash
+./uninstall.sh                # removes the framework; leaves every workspace's .conversation-memory/ and the registry in place
+./uninstall.sh --purge-data   # also deletes .conversation-memory/ per workspace (prompts for each) and the global registry
+```
+
+`uninstall.sh` removes the venv, the `session-memory` symlink, all slash commands/skills, and every hook/MCP registration entry it added to Claude Code's and agy's config — without touching anything else already in those config files.
 
 ## Design notes
 

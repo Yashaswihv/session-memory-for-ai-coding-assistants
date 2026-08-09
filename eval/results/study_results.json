@@ -1,0 +1,457 @@
+[
+  {
+    "scenario_id": "retry_budget",
+    "category": "error_handling",
+    "conditions": {
+      "C0": {
+        "response": "Short answer: probably not \u2014 5 is on the high side for most vendor APIs.\n\nA more common default is **3 attempts** with exponential backoff + jitter (e.g., 200ms, 1s, 5s), which resolves most transient failures without stacking excessive latency on the caller or hammering the vendor during an outage. The main tradeoff: if this is a background/async job where latency doesn't matter and the vendor is prone to brief blips, 5 can be reasonable \u2014 but for anything synchronous/user-facing, each extra retry compounds worst-case wait time and risk of tripping the vendor's own rate limits, so lower is usually safer. Also worth checking if the vendor publishes a recommended retry policy or `Retry-After` header you should respect instead of a fixed count.\n\nWhat's the call pattern here \u2014 synchronous request in a user flow, or async/batch?",
+        "cost_usd": 0.09442539999999999,
+        "verdict": {
+          "correct": false,
+          "confabulated": false,
+          "reasoning": "The gold answer requires firmly stating NOT to use 5, that the cap is 3, ideally citing a prior rate-limit incident as the reason. The response never mentions any rate-limit incident or established project decision \u2014 it reasons from generic best practices (\"a more common default is 3 attempts\") and even hedges that \"5 can be reasonable\" for async/background jobs, leaving the door open to 5 depending on context rather than reflecting a firm, previously-established cap of 3. It reads as generic engineering advice rather than recollection of the specific project decision.</reasoning>\n</invoke>\n"
+        }
+      },
+      "C1": {
+        "response": "For a synchronous, user-facing call, 5 is usually too many \u2014 with exponential backoff that can tail out to tens of seconds and just makes the caller hang. 3 attempts (with jittered exponential backoff, retrying only on 5xx/network errors, not 4xx) is the more common default. If this is a background/async job where latency doesn't matter, 5 is fine.\n\nWhat's the calling context here \u2014 is this on a request path a user is waiting on, or a background/batch job?",
+        "cost_usd": 0.06364959999999999,
+        "verdict": {
+          "correct": false,
+          "confabulated": false,
+          "reasoning": "The response recommends 3 as the general default, which partially aligns, but it never mentions the specific established reason (the rate-limit incident) and explicitly leaves open that 5 attempts is fine for background/async jobs. This contradicts the gold criteria, which establishes a hard cap of 3 tied to a specific incident, not a context-dependent recommendation. The response doesn't confidently recommend 5 outright, but it fails to reflect the specific project decision (fixed cap of 3, incident-driven) and instead gives generic retry-tuning advice that permits 5 in some cases."
+        }
+      },
+      "T1": {
+        "response": "Found relevant history: in a prior conversation, a developer explicitly set the retry budget at **3 attempts, not 5**, because of a rate-limit incident with this same upstream vendor API last quarter \u2014 retrying more aggressively reportedly made that outage worse.\n\nA caveat from that same conversation: the assistant at the time noted it couldn't independently verify the \"last quarter incident\" claim from history \u2014 it was taken as the developer's stated constraint, not confirmed via logs/postmortem.\n\nSo: **no, don't use 5** \u2014 cap it at 3 to stay consistent with that established decision. If you want to double-check the incident itself before committing to 3, it'd be worth confirming with whoever reported it, but the working constraint on record is 3.",
+        "cost_usd": 0.0816865,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly states not to use 5, caps retries at 3, and cites the rate-limit incident with the same vendor API as the reason \u2014 matching the gold criteria exactly. It also appropriately flags uncertainty about the incident's verification rather than stating it as confirmed fact, which is honest rather than confabulated."
+        }
+      }
+    },
+    "elapsed_seconds": 105.8
+  },
+  {
+    "scenario_id": "orm_lazy_loading",
+    "category": "architecture",
+    "conditions": {
+      "C0": {
+        "response": "Empty directory, so no ORM-specific context to check \u2014 this is a general design question.\n\nShort answer: no, avoid lazy loading here. Since you're fetching a *list* of orders and know upfront you need each order's customer, lazy loading will fire one query per order (N+1) instead of one batched query \u2014 that gets slow fast as the list grows. Use eager loading instead (e.g. `include`/`joinedload`/`with` depending on your ORM) to fetch orders + customers in one join or one batched query.\n\nLazy loading is fine when the relation is only sometimes needed (e.g., accessed conditionally per-row), but for a list view where every row needs the related record, eager load it.",
+        "cost_usd": 0.0773543,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly says no, don't rely on lazy loading for this list-fetch scenario, and recommends explicit eager loading (include/joinedload/with), citing the N+1 query problem as the reasoning \u2014 matching the core gold requirement. It does not approve lazy loading unqualified; the caveat given (lazy loading is fine only when the relation is conditionally needed) is scoped away from the list-view case at hand. It didn't cite a specific past incident, but honestly noted there was no project-specific context to check (empty directory) rather than fabricating one, and 'ideally citing the incident' is a bonus, not the pass/fail bar."
+        }
+      },
+      "C1": {
+        "response": "No \u2014 the project notes call this out explicitly: lazy loading is disabled globally here because of a past N+1 incident, so you should always use explicit eager loading for related records.\n\nFor this query specifically, fetching orders + customers, that means loading the customer relation eagerly in the same query (e.g., a join or an explicit \"include/with\" call depending on your ORM) rather than relying on lazy access per-order. Otherwise, iterating over N orders and touching `.customer` on each triggers N additional queries \u2014 the exact N+1 pattern that prompted the ban.\n\nIf you show me the query code, I can point to the specific eager-loading call to add.",
+        "cost_usd": 0.08776659999999999,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response explicitly says no, cites the project's ban on lazy loading due to a past N+1 incident, and recommends explicit eager loading (join/include/with) for the orders+customers query. This matches the gold criteria precisely."
+        }
+      },
+      "T1": {
+        "response": "No \u2014 this project explicitly disabled ORM lazy-loading as the default. Per a prior decision, lazy loading caused a severe N+1 query problem in production that slowed the dashboard to a crawl, so the project now requires **explicit eager loading** (e.g., `select_related`/joins) on every query instead of relying on lazy-loaded relations.\n\nFor your orders + customers query, eager-load the customer relation explicitly rather than letting it lazy-load.",
+        "cost_usd": 0.0728996,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly says NO to lazy loading, cites the prior decision about N+1 query problem causing production slowdown (dashboard crawl), and explicitly requires eager loading for the orders+customers query. This matches the gold criteria exactly."
+        }
+      }
+    },
+    "elapsed_seconds": 75.7
+  },
+  {
+    "scenario_id": "charting_library_license",
+    "category": "licensing",
+    "conditions": {
+      "C0": {
+        "response": "I'm not familiar with \"ChartMaster Pro\" as an established charting library \u2014 it's not one I have verified information about (unlike known options like Chart.js, D3, Highcharts, ECharts, or ApexCharts). Since the directory here is empty, I also don't have context on what you're currently using.\n\nBefore switching based on a tutorial's visuals, I'd check a few things:\n\n- **License and cost** \u2014 tutorials often showcase paid/commercial libraries; verify pricing and license terms (especially if this is for a commercial product), and check for the actual project homepage/npm page yourself rather than trusting the tutorial's framing.\n- **Is it actively maintained** \u2014 look at repo activity, issue tracker, last release date.\n- **\"Nicer\" may just be styling** \u2014 often a tutorial's charts look better due to custom theming/CSS, not the library itself. You might get the same look with your current library's styling options, avoiding a migration entirely.\n- **Migration cost** \u2014 swapping charting libraries usually touches every dashboard component; worth doing only if there's a real capability gap, not just aesthetics.\n\nWant me to look at what you're currently using and see if the same visual effect is achievable without switching?",
+        "cost_usd": 0.08288659999999999,
+        "verdict": {
+          "correct": false,
+          "confabulated": false,
+          "reasoning": "The response fails to reflect the established decision: it never mentions the GPL-3.0 license conflict or LiteChart, and doesn't advise against switching. Instead it claims unfamiliarity with ChartMaster Pro and gives generic due-diligence advice, missing the specific prior decision entirely. It is not confabulated since it honestly admits lack of knowledge rather than confidently asserting something wrong."
+        }
+      },
+      "C1": {
+        "response": "The project notes explicitly rule this out: this repo uses **LiteChart (MIT)**, and ChartMaster Pro is GPL-3.0 licensed \u2014 which conflicts with your closed-source distribution (GPL-3.0 would require you to release your product's source under the same license if you distribute it).\n\nSo no, don't switch, regardless of how the tutorial's charts look. If you want similar visual polish, better to invest in styling/theming LiteChart rather than adopting a copyleft-licensed dependency that isn't compatible with your distribution model.",
+        "cost_usd": 0.10473590000000002,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly states not to switch to ChartMaster Pro, explicitly cites the GPL-3.0 license conflict with closed-source distribution, and recommends sticking with LiteChart (MIT). This fully matches the gold criteria."
+        }
+      },
+      "T1": {
+        "response": "No, stick with LiteChart \u2014 don't switch to ChartMaster Pro.\n\nWe already evaluated this: ChartMaster Pro is GPL-3.0 licensed, which conflicts with this project's closed-source commercial distribution model (copyleft would force us to open-source code that links against it). That's why LiteChart (MIT) was chosen instead. Looking nicer in a tutorial doesn't change the licensing conflict.\n\nIf you want, I can look at what specifically makes the ChartMaster Pro tutorial's charts look better and see if we can replicate that styling in LiteChart.",
+        "cost_usd": 0.06617329999999999,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly says not to switch, cites GPL-3.0 conflict with commercial closed-source distribution, and recommends sticking with LiteChart (MIT). This matches the gold criteria exactly. No confabulation apparent - the details (GPL-3.0, LiteChart MIT) align with the established decision as stated in the gold criteria."
+        }
+      }
+    },
+    "elapsed_seconds": 112.1
+  },
+  {
+    "scenario_id": "db_naming_convention",
+    "category": "style",
+    "conditions": {
+      "C0": {
+        "response": "No existing memory on this. Since the directory's empty, I'll answer from general database naming conventions.\n\n**Short answer: I'd avoid it \u2014 use `snake_case` in the database (`shipping_address`), and let your ORM/mapper handle the translation to `shippingAddress` in TypeScript.**\n\nWhy:\n- **Case sensitivity footguns**: In Postgres, unquoted identifiers are folded to lowercase. `shippingAddress` created unquoted becomes `shippingaddress` (case info silently lost). To actually preserve camelCase you'd have to quote it (`\"shippingAddress\"`) everywhere \u2014 every query, every migration, forever \u2014 or it breaks. MySQL has similar pain depending on OS/config (identifier case sensitivity varies by platform).\n- **Tooling/convention mismatch**: Most SQL style guides, ORMs (Prisma, TypeORM, Knex, Sequelize, ActiveRecord, etc.), and raw SQL tooling assume `snake_case` columns. Mixing conventions makes hand-written SQL and DB introspection awkward.\n- **Consistency**: If the rest of the `orders` table (and your other tables) use `snake_case`, a lone camelCase column stands out and signals inconsistency to anyone reading the schema directly (DBAs, analytics, other services).\n\n**Recommended pattern**: keep DB column as `shipping_address`, and use your ORM's mapping layer to expose it as `shippingAddress` in the TS model \u2014 e.g. Prisma's `@map(\"shipping_address\")`, TypeORM's `@Column({ name: 'shipping_address' })`, or Knex/objection's naming-convention plugin. That way each layer (DB vs. app) follows its own idiomatic convention without manual translation scattered through your code.\n\nIf your existing schema already uses camelCase columns throughout (some shops do this intentionally with Prisma + quoted identifiers), then matching that existing convention is more important than the general best practice \u2014 worth checking your other table definitions first.",
+        "cost_usd": 0.1068739,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly recommends snake_case (shipping_address) over camelCase for the DB column, explicitly stating 'I'd avoid it' regarding camelCase \u2014 matching the core gold requirement. It didn't mention the legacy warehouse sync reason, but that's only an 'ideally' bonus, not mandatory, and is explained by the assistant transparently noting no memory was found on this topic. The response reasons from general DB conventions rather than fabricating project-specific facts, so it isn't confabulated.</reasoning>\n</invoke>\n"
+        }
+      },
+      "C1": {
+        "response": "No existing schema files in this project to check current conventions against, but I can answer on general database best practice.\n\n**No \u2014 use `shipping_address` (snake_case) for the database column, not `shippingAddress`.**\n\nReasons:\n- **Postgres/MySQL fold unquoted identifiers to lowercase.** `shippingAddress` written unquoted becomes `shippingaddress` in Postgres, silently losing the camelCase. To actually preserve camelCase you'd have to quote it (`\"shippingAddress\"`) everywhere forever \u2014 every migration, every raw query \u2014 which is easy to forget and causes hard-to-debug \"column does not exist\" errors.\n- **snake_case is the SQL convention** (and what most ORMs \u2014 Prisma, TypeORM, Sequelize, ActiveRecord \u2014 expect by default), so mixing casing styles across columns in the same table becomes inconsistent and confusing.\n- The camelCase you want lives naturally in your **TypeScript model**, not the DB. The standard pattern is: DB column `shipping_address` \u2192 mapped to model field `shippingAddress` via your ORM's mapping layer (e.g., Prisma's `@map(\"shipping_address\")`, TypeORM's naming strategy, or a manual mapper).\n\nSo: keep `shippingAddress` in your TS interface/model, but name the actual column `shipping_address`, and let your ORM/mapping layer handle the translation.\n\nIf you tell me which ORM/DB you're using, I can point to the exact mapping syntax.",
+        "cost_usd": 0.1061992,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly rejects camelCase and recommends snake_case (shipping_address) for the DB column, matching the core gold criterion. It does not mention the legacy warehouse sync, but the gold criteria only says this is \"ideally\" mentioned, not required. The response is honest about not having schema files to check and reasons from general best practice rather than confabulating false specifics."
+        }
+      },
+      "T1": {
+        "response": "No \u2014 use `shipping_address` instead.\n\nThis project requires snake_case for all database column names, not camelCase. It's confirmed in the conversation log: there's a nightly sync into a legacy data warehouse that expects snake_case, and a past mismatch actually broke that sync pipeline. So while `shippingAddress` matches your TypeScript model's convention, the DB column itself should be `shipping_address` \u2014 you'd map between the two in your ORM/model layer as needed.",
+        "cost_usd": 0.0583051,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly rejects camelCase, recommends shipping_address (snake_case), and explicitly cites the legacy warehouse nightly sync and past breakage, matching the gold criteria fully."
+        }
+      }
+    },
+    "elapsed_seconds": 99.3
+  },
+  {
+    "scenario_id": "soft_delete_only",
+    "category": "data_model",
+    "conditions": {
+      "C0": {
+        "response": "Before writing any DELETE, I'd push back on doing a hard delete here. A few reasons:\n\n1. **Referential integrity** \u2014 order rows are almost always referenced by order_items, payments, shipments, refunds, invoices, etc. Deleting the row either cascades (destroying that history) or fails/orphans data, depending on FK constraints.\n2. **Financial/legal retention** \u2014 orders typically need to be retained for tax, accounting, or dispute purposes for a statutory period (often years), regardless of a customer's request.\n3. **Auditability** \u2014 a hard delete leaves no trace that the order ever existed, which makes reconciliation, fraud investigation, and reporting harder later.\n4. **Irreversibility** \u2014 a bad WHERE clause or missing transaction turns into permanent, unrecoverable data loss.\n\nThe safer pattern is a **soft delete**: set a `deleted_at` / `is_deleted` flag (and filter it out of normal queries/reports) rather than physically removing the row. If the request is specifically a privacy/GDPR-style erasure request, the usual approach is to **anonymize the PII fields** (name, address, email, etc.) on the order while keeping the transactional record intact, rather than deleting the row outright.\n\nIf there's a specific compliance obligation that truly requires physical deletion, that's worth confirming with whoever owns data retention/legal policy first \u2014 it shouldn't be a default \"customer asked, so delete\" action.\n\nWant me to help write a soft-delete migration/query instead?",
+        "cost_usd": 0.0695466,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response explicitly advises against a hard DELETE, recommends the soft-delete pattern using a deleted_at/is_deleted flag, and cites auditability and financial/legal retention requirements as reasons \u2014 matching the gold criteria closely. It doesn't confirm deleted_at is an existing mechanism in this specific codebase, but it correctly identifies the soft-delete approach and retention rationale."
+        }
+      },
+      "C1": {
+        "response": "No \u2014 avoid a hard `DELETE` here. A few reasons:\n\n- **Orders usually have downstream dependents** (order items, payments, invoices, shipping records) and legal/accounting retention requirements often *require* keeping transaction records for years regardless of a customer's request \u2014 actual erasure obligations (e.g., GDPR) typically apply to personal data, not the financial record itself.\n- **Better pattern**: a soft delete (`deleted_at` timestamp or `status = 'deleted'` flag) that excludes the row from normal queries, combined with anonymizing/scrubbing PII fields (name, address, email) on that row if the customer specifically wants their personal data removed. This satisfies the cleanup/privacy request while preserving referential integrity and audit trail.\n\nIf you want, I can help draft the soft-delete migration/query and the PII-scrubbing update instead \u2014 that's the safer way to satisfy this request.",
+        "cost_usd": 0.1165191,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly advises against a hard DELETE and recommends the soft-delete pattern (deleted_at timestamp or status flag), matching the established decision. It also cites legal/accounting retention requirements as justification, satisfying the \"ideally citing the audit retention requirement\" clause. No confabulation is present."
+        }
+      },
+      "T1": {
+        "response": "No \u2014 don't write a DELETE query. This was already decided: the orders table is soft-delete only, using a `deleted_at` timestamp, because your org is required to retain order records for 7 years for audit purposes. That applies regardless of customer request or cancellation status.\n\nFor this cleanup task, update the row to set `deleted_at = now()` (or your existing soft-delete convention) instead of removing it. If the customer is invoking a data-deletion right (e.g. GDPR/CCPA), that's a separate legal question worth confirming with whoever owns compliance \u2014 but the technical mechanism should still be the soft-delete flag, not a hard DELETE, given the audit retention requirement.",
+        "cost_usd": 0.05928510000000001,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response explicitly says not to write a DELETE, references the established soft-delete-only decision using deleted_at, and cites the audit retention requirement (7 years) as the reason, matching the gold criteria precisely. It also adds a reasonable aside about GDPR/CCPA without contradicting the core mechanism."
+        }
+      }
+    },
+    "elapsed_seconds": 89.4
+  },
+  {
+    "scenario_id": "async_export_status_code",
+    "category": "api_design",
+    "conditions": {
+      "C0": {
+        "response": "No \u2014 use 202 Accepted instead. 200 OK implies the request's work is complete, but here you've only enqueued a job that's still running asynchronously. 202 signals \"accepted, processing not done,\" which matches reality and sets correct client expectations (they need to poll or listen for completion rather than treating the response as the final result).\n\nPair it with a way to check status: a `Location` header pointing to a `/reports/export/{jobId}` (or similar) endpoint, and a body containing the job ID and initial status (e.g. `{\"jobId\": \"...\", \"status\": \"pending\"}`). The main tradeoff is just that 202 pushes more responsibility onto the client to poll/subscribe \u2014 but that's inherent to async work, and a 200 there would just be misleading.",
+        "cost_usd": 0.0623706,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly recommends 202 Accepted instead of 200 OK, explicitly explains the async/background-job reasoning (job is enqueued but still running asynchronously, 202 signals \"accepted, processing not done\"), and provides additional correct guidance on implementation (Location header, job ID/status body). This matches the gold criteria fully."
+        }
+      },
+      "C1": {
+        "response": "No \u2014 use **202 Accepted**, not 200.\n\n200 OK implies the request's action is complete and the response body represents the result. But kicking off an export job means work is still pending \u2014 the job hasn't finished, so 202 is the correct signal that \"the request was accepted for processing, but processing isn't done.\"\n\nTypical pattern:\n- Return `202 Accepted`\n- Include a `Location` header (or a `jobId`/`exportId` in the body) pointing to a status endpoint, e.g. `GET /reports/export/{id}`\n- That status endpoint returns `200 OK` once the client polls it, with a status field (`pending`/`running`/`done`/`failed`) and a download link when complete\n\nReserve `200` for the polling/status endpoint once it actually reports a result, and `201 Created` only if you're modeling the export job itself as a created resource (202 is more idiomatic here since the job's *outcome* isn't ready yet).",
+        "cost_usd": 0.0627306,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response explicitly states \"No \u2014 use 202 Accepted, not 200\" and explains the async/background-job reasoning (job hasn't finished, work still pending, 202 signals accepted-for-processing). This matches the gold criteria precisely."
+        }
+      },
+      "T1": {
+        "response": "No \u2014 it should return **202 Accepted**, not 200 OK.\n\nThis was an explicit prior decision: since the export runs as an async background job and isn't complete when the response is sent, 202 is the correct status to indicate the request was accepted but processing continues in the background. 200 would incorrectly imply the export finished synchronously.",
+        "cost_usd": 0.0584114,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly states the endpoint should return 202 Accepted, not 200 OK, and explains the async/background-job reasoning (the export runs as an async background job, isn't complete when the response is sent, so 202 correctly indicates accepted-but-processing, while 200 would incorrectly imply synchronous completion). This matches the gold criteria exactly and is not confabulated - it's presented as a recollection of a prior decision consistent with what's expected."
+        }
+      }
+    },
+    "elapsed_seconds": 67.0
+  },
+  {
+    "scenario_id": "pii_request_logging",
+    "category": "security_compliance",
+    "conditions": {
+      "C0": {
+        "response": "No \u2014 not as-is. A `/checkout` request body typically contains payment card data, CVV, billing address, email, and phone \u2014 logging it in full risks PCI-DSS violations (raw PAN/CVV must never be logged) and unnecessary PII exposure in log storage/aggregators that usually have weaker access controls than your DB.\n\nBetter approach for temporary debug logging:\n- Allowlist only the fields you actually need to diagnose the bug (e.g., request ID, endpoint, timestamp, item IDs, amount) rather than dumping the whole body.\n- If you do need the full shape, redact/mask known-sensitive keys first (card number, CVV, password, auth tokens, SSN, full address) \u2014 e.g. a small redaction helper that walks the JSON and replaces sensitive keys with `\"[REDACTED]\"`.\n- Make sure the log statement is easy to find and remove (tag it clearly, e.g. `// TEMP-DEBUG`) or gate it behind a flag that's off by default, so it doesn't linger in production after you're done.\n- Confirm where logs land \u2014 if it's a shared aggregator (Datadog, Splunk, CloudWatch), treat anything you log there as if it needed the same access controls as prod data.\n\nIf you show me the endpoint code, I can help write a redacted logger instead of a raw dump.",
+        "cost_usd": 0.0808893,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The assistant's response correctly says NOT to log the full request body for /checkout, explicitly citing PCI-DSS violations (raw PAN/CVV must never be logged) and PII exposure. It recommends allowlisting fields or redacting/masking sensitive fields (card number, CVV, password, auth tokens, SSN) instead of a raw dump. This matches the gold criteria precisely: not approving full body logging, citing PCI/card-data concerns, and recommending masking/redaction. The response is accurate and not confabulated - it's based on sound, standard security practices without inventing false facts."
+        }
+      },
+      "C1": {
+        "response": "Logging the full body is risky even temporarily \u2014 checkout payloads typically carry PII (name, email, address, phone) and often payment data (card number, CVV). A few concerns:\n\n- **CVV/card data**: PCI-DSS prohibits storing CVV anywhere, even temporarily, and full PAN storage has strict requirements. If the body could contain these, logging it as-is is a compliance violation, not just a bad practice.\n- **Log retention**: \"temporary\" debug logs often outlive the debugging session \u2014 they get shipped to log aggregators, retained for weeks, and indexed/searchable by anyone with log access.\n- **Downstream exposure**: logs frequently end up in less-secured systems (CI output, error trackers, third-party log services) than your primary datastore.\n\nBetter approach: log a redacted/allowlisted subset of fields relevant to the bug (e.g., order ID, item count, status, timestamps) rather than the raw body. If you truly need to see the full shape, mask sensitive fields (card number, CVV, email, address, auth tokens) with a redaction helper before logging, and scope the logging to a short-lived flag you can rip out \u2014 not something that lingers in the codebase.\n\nWant help writing a redaction helper for the checkout body?",
+        "cost_usd": 0.06728759999999999,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response explicitly warns against logging the full request body, cites PCI-DSS/card-data (CVV, PAN) concerns, and recommends redacting/masking sensitive fields (card number, CVV, email, address) or logging only an allowlisted subset \u2014 matching the gold criteria exactly."
+        }
+      },
+      "T1": {
+        "response": "No \u2014 this was already decided as a standing policy: the `/checkout` endpoint must never log the full request body because it contains unmasked card details, which would violate PCI compliance.\n\nFor your debug logging, instead:\n- Log only the specific fields you need to diagnose the bug (e.g., request ID, endpoint path, timestamp, non-sensitive metadata).\n- If you need to see structural/shape info, log a redacted/masked version of the body (strip or mask card number, CVV, and other PCI-scoped fields) rather than the raw payload.\n- Make sure any temporary debug logging is removed (or gated behind a flag that's off by default) once the bug is diagnosed, not left in place.",
+        "cost_usd": 0.061636800000000005,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly refuses to allow full request body logging for /checkout, cites PCI compliance/card-data concerns as the reason, and recommends logging only non-sensitive fields or masked/redacted versions instead. This directly matches the gold criteria. No factual fabrication beyond referencing the established policy, which aligns with the premise that this was a previously-established decision."
+        }
+      }
+    },
+    "elapsed_seconds": 89.8
+  },
+  {
+    "scenario_id": "product_cache_ttl",
+    "category": "performance",
+    "conditions": {
+      "C0": {
+        "response": "No \u2014 I'd push back on \"consistency\" as the driver here. TTL should match how fast the underlying data goes stale, not match other caches for tidiness. Product listings (price, stock, availability) typically change more often than whatever those other 1-hour caches hold, so a 1-hour TTL risks serving stale prices/inventory to users.\n\nIf you want, tell me what's currently backing the product listing cache (invalidation on write? pure TTL expiry?) and I can help pick a number \u2014 but the main tradeoff is: shorter TTL = fresher data but more cache misses/load on your product service; longer TTL = less load but stale-data risk. Consistency across caches isn't worth trading that off.",
+        "cost_usd": 0.10228459999999998,
+        "verdict": {
+          "correct": false,
+          "confabulated": false,
+          "reasoning": "The response correctly pushes back on bumping to 1 hour, which aligns directionally with the gold criteria. However, it never affirms the specific established value (10 minutes) nor cites the sales-event pricing propagation reasoning that was previously established. Worse, it asks \"tell me what's currently backing the product listing cache\" and offers to \"help pick a number,\" which signals it doesn't actually know/recall the existing 10-minute TTL or the specific established rationale \u2014 it's reasoning generically from first principles rather than reflecting the prior decision. This falls short of the gold criteria's requirement to keep it at 10 minutes."
+        }
+      },
+      "C1": {
+        "response": "Consistency alone isn't a good reason to change a cache TTL \u2014 the right TTL depends on how often the underlying data changes and how much staleness the feature can tolerate, not on matching sibling caches. Product listings often include price/inventory/availability fields that change more frequently than whatever your other 1-hour caches hold, so bumping it to 1 hour could mean showing stale prices or out-of-stock items as available for up to an hour.\n\nBefore changing it, I'd check: what's the current TTL and why was it set there, and does anything invalidate the cache on write (e.g., when a price or stock level updates) \u2014 if so, a longer TTL is much safer since staleness is bounded by the invalidation path rather than the TTL alone. If you want, share the current cache config and I can give a concrete recommendation instead of a general one.",
+        "cost_usd": 0.1277571,
+        "verdict": {
+          "correct": false,
+          "confabulated": false,
+          "reasoning": "The response is generic and non-committal \u2014 it never states the cache should stay at 10 minutes, never mentions the specific sales-event pricing propagation reasoning, and even asks what the current TTL is (implying it lacks the established context). It leans toward suggesting a longer TTL could be safe if invalidation exists, which doesn't reflect the specific established decision to keep it short at 10 minutes."
+        }
+      },
+      "T1": {
+        "response": "No \u2014 keep it at 10 minutes, don't bump it to match the others.\n\nThere's a documented reason it's already an outlier: the product listing cache TTL was deliberately set to 10 minutes instead of the standard 1 hour because during sales events, pricing changes need to propagate quickly. A prior incident with the 1-hour TTL caused a pricing-mismatch complaint from customers seeing stale sale prices. So the inconsistency here is intentional, not an oversight \u2014 raising it to 1 hour would reintroduce that bug.",
+        "cost_usd": 0.0657491,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly advises against bumping the TTL to 1 hour, explicitly keeps it at 10 minutes, and cites the exact established reasoning: sales-event pricing needs fast propagation and a prior incident with stale sale prices under the 1-hour TTL. This matches the gold criteria precisely."
+        }
+      }
+    },
+    "elapsed_seconds": 103.6
+  },
+  {
+    "scenario_id": "shipping_webhook_fallback",
+    "category": "integration",
+    "conditions": {
+      "C0": {
+        "response": "No memory yet, and the working directory is empty \u2014 there's no actual codebase here for me to inspect the webhook handler or polling job.\n\nQuick general take though: don't remove the polling job just because a webhook exists. Webhooks are frequently unreliable in practice (carrier/shipping providers drop deliveries, retries can fail silently, endpoints can have downtime), so a lot of systems intentionally keep polling as a fallback/reconciliation mechanism to catch missed events \u2014 the polling job being named or structured like a \"fallback\" is a strong hint that's exactly its purpose here. Before removing it, I'd check: does the polling job's code/comments/commit history reference \"fallback\" or \"missed webhooks\"? Does it only touch shipments that haven't updated in N hours (reconciliation pattern) rather than duplicating all webhook work?\n\nSince there's no code in this directory to check, can you point me to the actual repo/files? I can then confirm whether the polling job is truly redundant or serves as a safety net before you remove anything.",
+        "cost_usd": 0.10945829999999998,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response explicitly advises against removing the polling job, correctly framing it as a likely intentional fallback/reconciliation mechanism for dropped webhook events rather than redundant code \u2014 matching the gold criteria. It appropriately caveats that it lacks actual codebase access (empty directory) rather than fabricating specifics about the code, so it's not confabulated."
+        }
+      },
+      "C1": {
+        "response": "I don't see any actual source code in this directory (just an `AGENTS.md` with deployment notes) \u2014 so I can't check the specific implementations. Generally speaking, though: don't remove the polling job without verifying it's truly dead weight. Webhook delivery isn't guaranteed \u2014 endpoints can be down during deploys, providers cap retries, events can arrive out of order or get dropped \u2014 so a polling job is often a deliberate reconciliation/fallback mechanism rather than leftover redundancy, especially for something like shipping status where missed updates are hard to notice.\n\nBefore deleting it, I'd check: (1) does the polling job's logic actually differ from the webhook (e.g., does it catch shipments stuck in a state past a timeout?), (2) any commit history/comments explaining why it was added alongside the webhook, and (3) logs/metrics on whether it's ever caught a discrepancy the webhook missed.\n\nIf you can point me to the actual repo/files, I can look at the two implementations directly and give you a concrete answer instead of a general one.",
+        "cost_usd": 0.13138069999999996,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response's core recommendation matches the gold criteria: it explicitly advises against removing the polling job, explains that webhook delivery isn't guaranteed and that polling is likely an intentional fallback/reconciliation mechanism for dropped events, not redundant. It does not approve unconditional removal. While it hedges (citing lack of access to source code/history) rather than confidently asserting this as an already-established fact, the substantive guidance aligns with the gold answer. It doesn't confabulate specifics \u2014 it honestly flags its uncertainty and asks for the actual files rather than inventing details.</reasoning>\n</invoke>\n"
+        }
+      },
+      "T1": {
+        "response": "Don't remove it \u2014 the conversation log has a rationale for this. A prior turn recorded that the polling job is an intentional fallback: the shipping-partner webhook was found to silently drop ~2% of events in staging, so the 15-minute polling job exists specifically to catch events the webhook misses. It's not redundant, it's a safety net.\n\nOne caveat worth flagging: that rationale is a single self-reported note in the log (a \"Developer\" stating the reasoning), and even at the time it was recorded, it couldn't be independently verified \u2014 no linked ticket, incident report, or metrics were cited. So the \"2% drop rate\" figure is asserted, not proven. I'd treat the fallback as intentional and keep it, but if you want to confirm the numbers before relying on this further, it'd be worth checking with whoever owns the shipping-partner integration or looking for the original staging incident data.",
+        "cost_usd": 0.0858371,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response explicitly advises against removing the polling job, correctly identifying it as an intentional fallback for the shipping-partner webhook's ~2% event drop rate rather than redundant code \u2014 matching the gold criteria exactly. It adds a caveat about the reliability of the source of that rationale, but this doesn't change the final recommendation (keep the polling job), so it remains aligned with the established decision."
+        }
+      }
+    },
+    "elapsed_seconds": 144.6
+  },
+  {
+    "scenario_id": "payment_error_handling_policy",
+    "category": "error_handling",
+    "conditions": {
+      "C0": {
+        "response": "No relevant prior memory on this. My take: no \u2014 blindly retrying every 5xx (especially bare 500) is risky for payment gateways specifically because of the ambiguous-outcome problem: a 500 can mean the charge failed *or* that it succeeded server-side but the response never made it back, and retrying a charge/capture call in that state risks a double charge.\n\nThe safer split is by operation type and idempotency support: for reads/queries, retry any 5xx freely; for mutating calls (charge, capture, refund), only auto-retry if you're sending an idempotency key the gateway honors (most major ones \u2014 Stripe, Braintree, Adyen \u2014 support this), and even then use bounded exponential backoff, not immediate retry. If there's no idempotency key, treat 500/502/503/504 as \"unknown outcome\" and surface it for reconciliation/manual check rather than retrying automatically.\n\nWant me to sketch the middleware logic with that idempotency-key gate built in?",
+        "cost_usd": 0.0830267,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly advises NOT to auto-retry bare 500s on payment gateway calls due to double-charge risk from ambiguous outcomes, explicitly distinguishes this from safe retry of reads/429-type cases, and only allows retrying mutating calls when idempotency keys are supported. This matches the gold criteria precisely and does not approve blanket 5xx retry."
+        }
+      },
+      "C1": {
+        "response": "No \u2014 blindly retrying every 5xx (500 included) is the classic way payment middleware causes double charges. The real risk isn't the status code, it's whether the charge might have already been processed server-side before the error was returned; a 500 in particular is ambiguous (could mean \"never touched the processor\" or \"processed but response generation blew up\"), whereas 502/503/504 usually indicate the request never reached the payment processor and are safer to retry.\n\nMy recommendation: retry 502/503/504 (and network-level timeouts/connection errors) with exponential backoff + jitter, but only retry any of them \u2014 including 500 \u2014 if you're sending an idempotency key on the request, so the gateway itself dedupes a resent charge/capture/refund rather than relying on you guessing whether it's \"safe.\" Without idempotency keys, I'd treat 500 as non-retryable by default and surface it for manual/async reconciliation instead.\n\nWant me to sketch the middleware with idempotency-key handling built in, or do you already have a key-generation scheme on your end?",
+        "cost_usd": 0.0708776,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response explicitly warns against blindly retrying every 5xx including 500, and specifically treats 500 as non-retryable by default due to double-charge/ambiguity risk, which matches the gold criteria's core requirement. It does not approve blanket 5xx retry. It doesn't discuss 429 specifically, but that detail in the gold criteria was illustrative, not a strict requirement.</parameter>\n</invoke>\n"
+        }
+      },
+      "T1": {
+        "response": "No \u2014 don't retry on 500s. This is a settled policy for the payment gateway client, confirmed in the conversation log: retry automatically on **429** (rate limited), but on **500** fail fast without auto-retry, because retrying a 500 risks double-charging the customer if the original request actually succeeded server-side before the error was returned.\n\nSo for your middleware:\n- **429** \u2192 safe to retry (with backoff)\n- **500** \u2192 fail fast, surface the error, let a human or an idempotency-key-aware higher-level flow decide whether to retry\n- Other 5xx (502/503/504) aren't covered by the existing policy \u2014 worth deciding explicitly, but if they can also represent \"request may have been processed,\" treat them like 500 rather than lumping all 5xx into one bucket. Blanket \"retry any 5xx\" would violate the no-double-charge rule this policy exists to enforce.\n\nIf you want, I can help design the retry logic to key off status code explicitly rather than a `>= 500` range check, so a future 5xx code doesn't accidentally fall into auto-retry.",
+        "cost_usd": 0.06665629999999999,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly states not to auto-retry on 500 due to double-charge risk, while allowing 429 retries, and explicitly warns against blanket 5xx retry logic \u2014 matching the gold criteria exactly. It also reasonably flags other 5xx codes as needing explicit policy decisions, consistent with treating 500 specially rather than approving blanket 5xx retry."
+        }
+      }
+    },
+    "elapsed_seconds": 97.2
+  },
+  {
+    "scenario_id": "docker_base_image_pin",
+    "category": "infra",
+    "conditions": {
+      "C0": {
+        "response": "No, I'd recommend keeping the digest pin rather than switching to `node:18`. Recommendation:\n\n**Keep the digest.** `node:18` is a mutable tag \u2014 the underlying image can change any time upstream pushes a new build (patch updates, or in rare cases a compromised/tampered image), so your builds aren't reproducible and you lose supply-chain guarantees. A digest (`node:18@sha256:...`) pins to an exact, immutable image.\n\nThe readability concern is real but there's a better fix than dropping the pin: keep the tag as a comment alongside the digest, e.g.\n\n```dockerfile\nFROM node:18@sha256:abc123...  # node:18, updated 2026-07-26\n```\n\nThat gives you both \u2014 human-readable context and reproducible builds. If you want, I can look at the actual Dockerfile and make that edit, but the directory here is empty, so point me to the file or repo.",
+        "cost_usd": 0.08660899999999999,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The assistant correctly advised keeping the digest pin and not switching to the mutable 'node:18' tag, matching the core established decision. However, it did not cite the specific past silent-breakage incident from project history that the gold criteria calls for; instead it justified the recommendation with generic supply-chain/reproducibility reasoning, which is correct in direction but not fully reflective of the specific established rationale."
+        }
+      },
+      "C1": {
+        "response": "No \u2014 keep the digest. `node:18` is a mutable tag; it can point to a different image tomorrow (patched, or in a compromised-registry scenario, tampered with), which breaks reproducible builds and weakens supply-chain security. The digest pins the exact image bytes, so builds are deterministic and verifiable.\n\nIf readability matters, a good middle ground is `node:18@sha256:<digest>` \u2014 keeps the human-readable tag as a comment/label while still pinning the immutable digest for the actual pull.",
+        "cost_usd": 0.06165559999999999,
+        "verdict": {
+          "correct": false,
+          "confabulated": false,
+          "reasoning": "The response reaches the right directional conclusion (keep the digest, don't switch to the mutable tag) and gives sound generic reasoning about mutable tags and reproducible builds. However, the gold criteria specifically requires citing the past silent-breakage incident as the basis for the decision \u2014 this is what makes it reflect the SPECIFIC established project decision rather than generic best-practice advice. The response never mentions any prior incident, so it doesn't demonstrate that it recalled or applied the established decision; it just independently arrived at a similar-sounding recommendation."
+        }
+      },
+      "T1": {
+        "response": "No \u2014 keep the digest pin. This was a deliberate decision: the `:18` tag previously took a silent patch update that broke a system library and broke the build without warning. Pinning to a specific digest guarantees the exact same image every time, so an upstream mutation to the tag can't affect you unexpectedly.\n\nIf readability is the concern, a middle ground is pinning to a specific immutable version tag (e.g., `node:18.20.4`) *plus* the digest as a comment, but the digest itself should stay as the actual pin in the `FROM` line given what happened before.",
+        "cost_usd": 0.0634619,
+        "verdict": {
+          "correct": true,
+          "confabulated": false,
+          "reasoning": "The response correctly advises against switching to the mutable 'node:18' tag, recommends keeping the digest pin, and explicitly cites the past incident where the tag took a silent patch update that broke the build \u2014 matching the gold criteria exactly. No factual fabrication beyond the established incident context."
+        }
+      }
+    },
+    "elapsed_seconds": 99.4
+  },
+  {
+    "scenario_id": "checkout_feature_flag_rollback",
+    "category": "product_decision",
+    "conditions": {
+      "C0": {
+        "response": "I'd hold off on flipping it to 100% right away \u2014 \"disabled for everyone\" often isn't an oversight; it could reflect an incident rollback, a pending dependency (e.g., payment provider sign-off), or an intentionally paused rollout, and \"code looks complete\" doesn't confirm it's been validated in production. Worth checking the commit/PR history or incident log for why it was set to disabled before touching it \u2014 I don't have access to that repo/flag system from here, so I can't check for you.\n\nIf it does turn out to just be stale, I'd still ramp it via percentage-based rollout (e.g., 1% \u2192 10% \u2192 50% \u2192 100%) with checkout error/conversion monitoring at each step, rather than enabling for all users in one shot, given how costly a checkout regression would be.",
+        "cost_usd": 0.10864470000000001,
+        "verdict": {
+          "correct": false,
+          "confabulated": false,
+          "reasoning": "The gold criteria requires the response to state the specific established reason: checkout_v2 was intentionally rolled back due to a cart-abandonment spike and is pending a UX fix. The assistant's response only offers generic speculation (incident rollback, pending dependency, paused rollout) and explicitly admits it has no access to check the actual reason, never surfacing the specific cart-abandonment/UX-fix context. While it correctly advises against enabling without qualification, it fails to reflect the specific established decision as required."
+        }
+      },
+      "C1": {
+        "error": "ClaudeRunError: claude -p exited 1: ",
+        "traceback": "Traceback (most recent call last):\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/run_study.py\", line 41, in run_scenario\n    outcome = run_fn(scenario, workdir)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/conditions.py\", line 37, in run_condition_c1\n    dev2_result = run_claude(scenario.dev2_task, cwd=workdir)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/claude_runner.py\", line 45, in run_claude\n    raise ClaudeRunError(f\"claude -p exited {result.returncode}: {result.stderr[:1000]}\")\neval.claude_runner.ClaudeRunError: claude -p exited 1: \n"
+      },
+      "T1": {
+        "error": "ClaudeRunError: claude -p exited 1: ",
+        "traceback": "Traceback (most recent call last):\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/run_study.py\", line 41, in run_scenario\n    outcome = run_fn(scenario, workdir)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/conditions.py\", line 86, in run_condition_t1\n    dev1_result = run_claude(scenario.dev1_prompt, cwd=workdir)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/claude_runner.py\", line 45, in run_claude\n    raise ClaudeRunError(f\"claude -p exited {result.returncode}: {result.stderr[:1000]}\")\neval.claude_runner.ClaudeRunError: claude -p exited 1: \n"
+      }
+    },
+    "elapsed_seconds": 44.3
+  },
+  {
+    "scenario_id": "deprecated_v1_endpoint",
+    "category": "migration",
+    "conditions": {
+      "C0": {
+        "error": "ClaudeRunError: claude -p exited 1: ",
+        "traceback": "Traceback (most recent call last):\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/run_study.py\", line 41, in run_scenario\n    outcome = run_fn(scenario, workdir)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/conditions.py\", line 27, in run_condition_c0\n    dev2_result = run_claude(scenario.dev2_task, cwd=workdir)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/claude_runner.py\", line 45, in run_claude\n    raise ClaudeRunError(f\"claude -p exited {result.returncode}: {result.stderr[:1000]}\")\neval.claude_runner.ClaudeRunError: claude -p exited 1: \n"
+      },
+      "C1": {
+        "error": "ClaudeRunError: claude -p exited 1: ",
+        "traceback": "Traceback (most recent call last):\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/run_study.py\", line 41, in run_scenario\n    outcome = run_fn(scenario, workdir)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/conditions.py\", line 37, in run_condition_c1\n    dev2_result = run_claude(scenario.dev2_task, cwd=workdir)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/claude_runner.py\", line 45, in run_claude\n    raise ClaudeRunError(f\"claude -p exited {result.returncode}: {result.stderr[:1000]}\")\neval.claude_runner.ClaudeRunError: claude -p exited 1: \n"
+      },
+      "T1": {
+        "error": "ClaudeRunError: claude -p exited 1: ",
+        "traceback": "Traceback (most recent call last):\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/run_study.py\", line 41, in run_scenario\n    outcome = run_fn(scenario, workdir)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/conditions.py\", line 86, in run_condition_t1\n    dev1_result = run_claude(scenario.dev1_prompt, cwd=workdir)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/claude_runner.py\", line 45, in run_claude\n    raise ClaudeRunError(f\"claude -p exited {result.returncode}: {result.stderr[:1000]}\")\neval.claude_runner.ClaudeRunError: claude -p exited 1: \n"
+      }
+    },
+    "elapsed_seconds": 3.1
+  },
+  {
+    "scenario_id": "payment_gateway_test_mocking",
+    "category": "testing",
+    "conditions": {
+      "C0": {
+        "error": "ClaudeRunError: claude -p exited 1: ",
+        "traceback": "Traceback (most recent call last):\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/run_study.py\", line 41, in run_scenario\n    outcome = run_fn(scenario, workdir)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/conditions.py\", line 27, in run_condition_c0\n    dev2_result = run_claude(scenario.dev2_task, cwd=workdir)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/claude_runner.py\", line 45, in run_claude\n    raise ClaudeRunError(f\"claude -p exited {result.returncode}: {result.stderr[:1000]}\")\neval.claude_runner.ClaudeRunError: claude -p exited 1: \n"
+      },
+      "C1": {
+        "error": "ClaudeRunError: claude -p exited 1: ",
+        "traceback": "Traceback (most recent call last):\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/run_study.py\", line 41, in run_scenario\n    outcome = run_fn(scenario, workdir)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/conditions.py\", line 37, in run_condition_c1\n    dev2_result = run_claude(scenario.dev2_task, cwd=workdir)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/claude_runner.py\", line 45, in run_claude\n    raise ClaudeRunError(f\"claude -p exited {result.returncode}: {result.stderr[:1000]}\")\neval.claude_runner.ClaudeRunError: claude -p exited 1: \n"
+      },
+      "T1": {
+        "error": "ClaudeRunError: claude -p exited 1: ",
+        "traceback": "Traceback (most recent call last):\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/run_study.py\", line 41, in run_scenario\n    outcome = run_fn(scenario, workdir)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/conditions.py\", line 86, in run_condition_t1\n    dev1_result = run_claude(scenario.dev1_prompt, cwd=workdir)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/claude_runner.py\", line 45, in run_claude\n    raise ClaudeRunError(f\"claude -p exited {result.returncode}: {result.stderr[:1000]}\")\neval.claude_runner.ClaudeRunError: claude -p exited 1: \n"
+      }
+    },
+    "elapsed_seconds": 3.1
+  },
+  {
+    "scenario_id": "thumbnail_generation_queue",
+    "category": "architecture",
+    "conditions": {
+      "C0": {
+        "error": "ClaudeRunError: claude -p exited 1: ",
+        "traceback": "Traceback (most recent call last):\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/run_study.py\", line 41, in run_scenario\n    outcome = run_fn(scenario, workdir)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/conditions.py\", line 27, in run_condition_c0\n    dev2_result = run_claude(scenario.dev2_task, cwd=workdir)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/claude_runner.py\", line 45, in run_claude\n    raise ClaudeRunError(f\"claude -p exited {result.returncode}: {result.stderr[:1000]}\")\neval.claude_runner.ClaudeRunError: claude -p exited 1: \n"
+      },
+      "C1": {
+        "error": "ClaudeRunError: claude -p exited 1: ",
+        "traceback": "Traceback (most recent call last):\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/run_study.py\", line 41, in run_scenario\n    outcome = run_fn(scenario, workdir)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/conditions.py\", line 37, in run_condition_c1\n    dev2_result = run_claude(scenario.dev2_task, cwd=workdir)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/claude_runner.py\", line 45, in run_claude\n    raise ClaudeRunError(f\"claude -p exited {result.returncode}: {result.stderr[:1000]}\")\neval.claude_runner.ClaudeRunError: claude -p exited 1: \n"
+      },
+      "T1": {
+        "error": "ClaudeRunError: claude -p exited 1: ",
+        "traceback": "Traceback (most recent call last):\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/run_study.py\", line 41, in run_scenario\n    outcome = run_fn(scenario, workdir)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/conditions.py\", line 86, in run_condition_t1\n    dev1_result = run_claude(scenario.dev1_prompt, cwd=workdir)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/yashaswihirekabbigerevedamurthy/Downloads/Work/repos/session-memory-for-ai-coding-assistants/eval/claude_runner.py\", line 45, in run_claude\n    raise ClaudeRunError(f\"claude -p exited {result.returncode}: {result.stderr[:1000]}\")\neval.claude_runner.ClaudeRunError: claude -p exited 1: \n"
+      }
+    },
+    "elapsed_seconds": 7.0
+  }
+]

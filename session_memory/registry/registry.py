@@ -4,7 +4,9 @@ from typing import List, Optional
 
 from session_memory.registry.workspace_entry import WorkspaceEntry
 
-DEFAULT_REGISTRY_DIR = os.path.expanduser("~/.config/session-memory")
+DEFAULT_REGISTRY_DIR = os.environ.get(
+    "SESSION_MEMORY_REGISTRY_DIR", os.path.expanduser("~/.config/session-memory")
+)
 DEFAULT_REGISTRY_PATH = os.path.join(DEFAULT_REGISTRY_DIR, "registry.json")
 
 

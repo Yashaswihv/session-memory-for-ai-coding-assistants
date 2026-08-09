@@ -46,9 +46,14 @@ def run_session_end(
     writer = LogWriter(workspace.memory_dir, workspace.commit_hash, session_id)
     new_turns = writer.append_new_turns(turns)
 
-    if new_turns:
-        index = SessionIndex(workspace.memory_dir, workspace.commit_hash, session_id)
-        index.add_turns(new_turns)
+    # SessionIndex tracks its own "already indexed" progress independently
+    # of LogWriter's cursor (see SessionIndex._turns_already_indexed), so
+    # the full turn list is passed every time rather than just the
+    # newly-written slice. This lets indexing self-heal if a prior
+    # invocation wrote the log but was killed before indexing finished --
+    # a real failure mode observed with hook execution timeouts.
+    index = SessionIndex(workspace.memory_dir, workspace.commit_hash, session_id)
+    index.add_turns(turns)
 
     registry = Registry()
     entry = registry.get_by_path(workspace.root)
