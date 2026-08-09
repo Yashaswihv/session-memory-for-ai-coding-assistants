@@ -15,6 +15,10 @@ RETRIEVAL_POINTER = (
     "- When the user references a past discussion, decision, or conversation (e.g. \"we discussed...\", "
     "\"what did we decide about...\", \"look up our past conversation on...\") -- search before answering "
     "rather than relying on this session's own context.\n"
+    "- If the user asks about a discussion that doesn't seem to belong to this project's own history "
+    "(e.g. a different folder, a different repo, \"another chat\"), use `search_all_workspaces` instead -- "
+    "it searches every workspace registered on this machine, not just this one, and labels each result "
+    "with its source workspace.\n"
     f"{POINTER_END_MARKER}\n"
 )
 
