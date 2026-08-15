@@ -21,7 +21,7 @@ setup(
         "faiss-cpu>=1.7.4",
         "sentence-transformers>=2.2.2",
         "rank-bm25>=0.2.2",
-        "mcp>=0.1.0",
+        "mcp>=0.1.0,<2.0.0",
         "click>=8.1.0",
         "pydantic>=2.0.0",
         "numpy>=1.20.0",
