@@ -7,6 +7,7 @@ from session_memory.indexing.bm25_index import Bm25Index
 from session_memory.indexing.chunker import Chunk, chunk_turns
 from session_memory.indexing.embedder import embed_texts
 from session_memory.indexing.faiss_index import FaissIndex
+from session_memory.store.removed_turns import RemovedTurns
 
 
 class SessionIndex:
@@ -30,6 +31,7 @@ class SessionIndex:
     def __init__(self, memory_dir: str, commit_hash: str, session_id: str):
         base = os.path.join(memory_dir, f"conversation_log_{commit_hash}_{session_id}")
         self.memory_dir = memory_dir
+        self.session_id = session_id
         self.faiss_path = base + ".faiss"
         self.bm25_path = base + ".bm25.pkl"
         self.chunks_path = base + ".chunks.pkl"
@@ -67,9 +69,19 @@ class SessionIndex:
         the FULL ordered turn list for this session each time (not a
         pre-sliced "new turns" subset) so this can independently determine
         what's missing.
+
+        Turns recorded in `RemovedTurns` by `session-memory cleanup` are
+        never (re-)indexed, even though "not reflected in the persisted
+        chunk list" would otherwise include them — deriving progress purely
+        from the chunks on disk cannot distinguish "developer deleted this"
+        from "never indexed yet".
         """
         already_indexed = self._turns_already_indexed()
-        new_turns = all_turns[already_indexed:]
+        removed = RemovedTurns(self.memory_dir).removed(self.session_id)
+        new_turns = [
+            turn for turn in all_turns[already_indexed:]
+            if turn.turn_index not in removed
+        ]
         new_chunks = chunk_turns(new_turns)
         if not new_chunks:
             return []
