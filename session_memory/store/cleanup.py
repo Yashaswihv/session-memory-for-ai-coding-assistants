@@ -8,6 +8,7 @@ from session_memory.indexing.bm25_index import Bm25Index
 from session_memory.indexing.chunker import Chunk
 from session_memory.indexing.embedder import embed_texts
 from session_memory.indexing.faiss_index import FaissIndex
+from session_memory.store.removed_turns import RemovedTurns
 
 _TURN_BLOCK_RE = re.compile(r"## Turn (\d+) — .*?(?=\n## Turn \d+ — |\Z)", re.DOTALL)
 
@@ -46,9 +47,12 @@ def remove_turns(memory_dir: str, session_id: str, turn_indices: List[int]) -> i
     the raw markdown log. Returns the number of chunks actually removed.
 
     Re-running the session-end hook for this same session afterward won't
-    resurrect the removed turn: `SessionState` tracks how many turns have
-    already been extracted from the transcript, not how many currently
-    exist in the log, so a shrunk log stays shrunk.
+    resurrect the removed turn: `SessionState` keeps the markdown log
+    shrunk (it tracks how many turns were extracted from the transcript,
+    not how many currently exist in the log), and the removed indices are
+    recorded in `RemovedTurns` so `SessionIndex` — which deliberately
+    derives its progress from the persisted chunks rather than
+    `SessionState` — knows not to re-index them on the next capture.
     """
     base = _find_session_base(memory_dir, session_id)
     if base is None:
@@ -61,13 +65,17 @@ def remove_turns(memory_dir: str, session_id: str, turn_indices: List[int]) -> i
         chunks: List[Chunk] = pickle.load(f)
 
     turn_indices_set = set(turn_indices)
-    kept = [c for c in chunks if c.turn_index not in turn_indices_set]
+    present = {c.turn_index for c in chunks}
+    removed_indices = present & turn_indices_set
+    kept = [c for c in chunks if c.turn_index not in removed_indices]
     removed_count = len(chunks) - len(kept)
     if removed_count == 0:
         return 0
 
     with open(chunks_path, "wb") as f:
         pickle.dump(kept, f)
+
+    RemovedTurns(memory_dir).record_removed(session_id, removed_indices)
 
     faiss_index = FaissIndex.create_empty(base + ".faiss")
     if kept:
